@@ -21,6 +21,12 @@ information such as:
   database)
 * Username (and password)
 
+## Planned commands
+
+* crh_add
+* crh_db_cleanup - check the database for stale entries (i.e., outstanding
+  		simulations without corresponding archive files)
+
 ## Rough outline of functionality
 
 * The client requests a given tomodir/sipdir to be processed by running
@@ -28,13 +34,13 @@ information such as:
 * For each tomodir/sipdir  [IN] (depending on the settings):
 	* If a control file [IN].crh is present, assume this directory is being
 	  processed at the moment, report it and do nothing (unless directory to)
-	* A control file [IN].crh is created with content:
+	* A control file (json-format) [IN].crh is created with content:
 		* datetime of creation, indicating a registration process is in process
 	* A unique id is assigned (comprised of user name and random uuid): [ID]
 	* The target dir is compressed with the output file comprised of the id and
 	  ending tar.gz [ID].tar.gz (alternative compression algorithms can be
 	  used)
-	* The simulation is registered in the crhydra database and gets assigned a
+	* The simulation is registered in the cr_hydra database and gets assigned a
 	  simulation id [SIM_ID], corresponding to the row id of the primary
 	  database table, indicating that it is still in the process of being
 	  processed. Data provided to database:
@@ -46,6 +52,7 @@ information such as:
 		* datetime of registration
 		* final location of simulation data
 		* location/name of crh file
+		* What type of simulation is requested (modeling or inversion)
 
 	* The control file [IN].crh is filled with content:
 
@@ -70,3 +77,8 @@ information such as:
 * On the client computer, crh_retrieve or crh_wait_retrieve can be used to
   query the database for finished inversions, which will be transferred back
   and decompressed.
+
+## Database configuration
+
+* CREATE USER mweigand WITH PASSWORD 'mweigand' CREATEDB;
+* create database cr_hydra owner mweigand;
