@@ -24,6 +24,7 @@ information such as:
 ## Planned commands
 
 * crh_add
+* crh_worker
 * crh_db_cleanup - check the database for stale entries (i.e., outstanding
   		simulations without corresponding archive files)
 
@@ -73,6 +74,13 @@ information such as:
   location of the original archive, with ending .crh_finished.
 
   Then the database is updated with the final result file.
+
+  * Worker options/settings:
+
+	* database login
+	* number of concurrent workers
+	* number of threads per worker
+	*
 
 * On the client computer, crh_retrieve or crh_wait_retrieve can be used to
   query the database for finished inversions, which will be transferred back

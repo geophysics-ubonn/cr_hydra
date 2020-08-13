@@ -12,6 +12,7 @@ create table "inversions" (
 	sim_type text,
     hydra_location text,
     crh_file text,
-	ready_for_processing BOOLEAN DEFAULT False
+	ready_for_processing BOOLEAN DEFAULT False,
+	status text default 'unfinished'
 );
 
