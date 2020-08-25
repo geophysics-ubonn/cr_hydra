@@ -2,6 +2,8 @@
 """
 
 """
+from multiprocessing import Process
+# import threading
 import logging
 import tarfile
 import os
@@ -27,19 +29,23 @@ work_directory = './'
 # settings end
 
 
-class hydra_worker(object):
+class hydra_worker(Process):
 
-    def __init__(self, settings):
+    def __init__(self, name, settings, **kwargs):
+        print('init worker')
+        Process.__init__(self)
+        self.name = name
         self.settings = settings
+        self.logger = logging.getLogger(name)
         self.engine = create_engine(
             database_login, echo=False, pool_size=10, pool_recycle=3600,
         )
-        self.logger = logging.getLogger(__name__)
 
-    def process_one_task(self):
+    def run(self):
         """
 
         """
+        print('run')
         # query database for open inversions
         conn = self.engine.connect()
         transaction = conn.begin_nested()
@@ -52,6 +58,7 @@ class hydra_worker(object):
         if r.rowcount == 0:
             return
         job_id = r.fetchone()[0]
+        self.logger.info('job id: {}'.format(job_id))
         query = ' '.join((
             'select',
             'archive_file, archive_hash, sim_type, hydra_location,'
@@ -107,10 +114,11 @@ class hydra_worker(object):
         self.logger.info('finished')
 
         os.chdir('..')
-        self.logger.info('archiving results')
+        self.logger.info('archiving results: {}'.format(os.getcwd()))
         archive_file = os.path.abspath(
             os.path.basename(outfile) + '.crh_finished'
         )
+        print(os.getcwd(), archive_file, tomodir_name)
         with tarfile.open(archive_file, 'w:xz') as tar:
             tar.add(tomodir_name, recursive=True)
 
@@ -136,7 +144,8 @@ class hydra_worker(object):
 
 
 if __name__ == '__main__':
-    worker = hydra_worker({})
-    worker.process_one_task()
-    worker.process_one_task()
-    worker.process_one_task()
+    worker1 = hydra_worker('thread1', {})
+    worker2 = hydra_worker('thread2', {})
+    worker1.start()
+    worker2.start()
+    print('end')
