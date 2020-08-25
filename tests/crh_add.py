@@ -3,6 +3,7 @@
 """Look for all unfinished tomodirs in the present directory (and
 subdirectories), e called.
 """
+import shutil
 import uuid
 import os
 import datetime
@@ -14,6 +15,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 from optparse import OptionParser
 import IPython
+IPython
 
 
 def handle_cmd_options():
@@ -173,10 +175,15 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     with open(crh_file, 'w') as fid:
         json.dump(crh_settings, fid)
 
+    # create archive
+    pwdx = os.getcwd()
+    os.chdir(os.path.dirname(tomodir))
+
     tomodir_id = username + '_' + str(uuid.uuid4())
-    archive_file = tomodir_id + '.tar.xz'
+    archive_file = os.path.abspath(tomodir_id + '.tar.xz')
     with tarfile.open(archive_file, 'w:xz') as tar:
-        tar.add(tomodir, recursive=True)
+        tar.add(os.path.basename(tomodir), recursive=True)
+    os.chdir(pwdx)
 
     # prepare data for simulation registration
     crh_settings['archive_file'] = os.path.basename(archive_file)
@@ -188,7 +195,8 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     crh_settings['sim_type'] = sim_type
     # hydra_dir
     hydra_dir = '/home/mweigand/hydra'
-    crh_settings['hydra_location'] = hydra_dir + os.sep + archive_file
+    crh_settings['hydra_location'] = hydra_dir + os.sep + os.path.basename(
+        archive_file)
     crh_settings['crh_file'] = os.path.abspath(crh_file)
     crh_settings['username'] = username
 
@@ -209,7 +217,6 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     # update crh file
     with open(crh_file, 'w') as fid:
         json.dump(crh_settings, fid, sort_keys=True, indent=4)
-    import shutil
     # now move the archive file to the hydra directory
     shutil.move(archive_file, crh_settings['hydra_location'])
     # now we are ready for processing
@@ -232,7 +239,7 @@ def main():
         _register_tomodir_for_processing(directory, 'mod')
     for directory in needs_inversion:
         _register_tomodir_for_processing(directory, 'inv')
-    IPython.embed()
+    # IPython.embed()
 
 
 if __name__ == '__main__':

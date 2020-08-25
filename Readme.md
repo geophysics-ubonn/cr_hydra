@@ -1,5 +1,12 @@
 # CRHydra - A distributed modeling/inversion framework for CRMod/CRTomo
 
+## TODO
+
+* investigate using fully qualified path strings (Urn? not sure how they are
+  called): sftp:// and file://. That way we can easily differentiate between
+  local and network files.
+* Fix the id-bug in crh_add (possible race condition)
+
 ## Introduction
 
 
