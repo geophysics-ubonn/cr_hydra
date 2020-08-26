@@ -206,6 +206,21 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
         pool_size=10,
         pool_recycle=3600,
     )
+
+    # upload archive to database
+    query = ' '.join((
+        'insert into binary_data (filename, hash, data) values',
+        '(%(filename)s, %(file_hash)s, %(bin_data)s);'
+    ))
+    import psycopg2
+    result = engine.execute(
+        query,
+        filename=os.path.basename(archive_file),
+        file_hash=sha256,
+        bin_data=psycopg2.Binary(open(archive_file, 'rb').read())
+    )
+    IPython.embed()
+    exit()
     df = pd.DataFrame(
         crh_settings, columns=list(crh_settings.keys()), index=[0, ])
     df.to_sql('inversions', engine, if_exists='append', index=False)

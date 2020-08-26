@@ -5,7 +5,7 @@ create table "binary_data" (
 	index SERIAL PRIMARY KEY,
 	filename text,
 	hash text,
-	bytea data
+	data bytea
 );
 
 -- inversions

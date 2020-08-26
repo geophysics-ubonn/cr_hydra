@@ -97,3 +97,5 @@ information such as:
 
 * CREATE USER mweigand WITH PASSWORD 'mweigand' CREATEDB;
 * create database cr_hydra owner mweigand;
+* postgresql://mweigand:mweigand@localhost/cr_hydra -f tables.sql
+*
