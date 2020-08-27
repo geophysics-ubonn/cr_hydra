@@ -2,9 +2,9 @@
 import os
 import glob
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-version_long = '0.1.0-dev0'
+version_long = '0.1.0.dev0'
 
 # generate entry points
 entry_points = {'console_scripts': []}
@@ -26,10 +26,10 @@ if __name__ == '__main__':
         author_email='mweigand@geo.uni-bonn.de',
         license='MIT',
         # url='https://github.com/geophysics-ubonn/reda',
-        packages=find_packages("lib"),
+        packages=['cr_hydra', ],
         package_dir={
             '': 'src',
-            'cr_hydra': 'lib',
+            'cr_hydra': 'lib/cr_hydra',
         },
         # install_requires=['numpy', 'scipy', 'pandas', 'matplotlib'],
         py_modules=scripts,
