@@ -2,15 +2,10 @@
 
 ## TODO
 
-* investigate using fully qualified path strings (Urn? not sure how they are
-  called): sftp:// and file://. That way we can easily differentiate between
-  local and network files.
-* Fix the id-bug in crh_add (possible race condition)
-* Linter:
+* Implement a check for the database:
 	* duplicate entries (hash, crh_file)
 
 ## Introduction
-
 
 ## Definition of terms
 
@@ -22,20 +17,22 @@
 
 ## Configuration file
 
-A configuration file is reuqired for cr_hydra to be used, containing
+A configuration file is required for cr_hydra to be used, containing
 information such as:
 
 * location and access information to database
-* Type and location of queue (i.e., directory, or at an later stage the
-  database)
-* Username (and password)
+* [not used at this point] Username (and password)
 
 ## Planned commands
 
-* crh_add
-* crh_worker
-* crh_db_cleanup - check the database for stale entries (i.e., outstanding
-  		simulations without corresponding archive files)
+* crh_add - find all tomodirs in all subdirectories and queue to database
+* crh_worker - query the database and run inversions
+* crh_retrieve - find all .crh files and check if the corresponding inversions
+  				 were already finished. Then download and unpack the results.
+* [not implemented] crh_db_cleanup - check the database for stale entries
+  (i.e., outstanding simulations without corresponding archive files)
+* [not implemented] crh_status - provide information about the queue and
+  running inversions
 
 ## Rough outline of functionality
 
@@ -103,3 +100,51 @@ information such as:
 * Get size of data table:
 
 	SELECT pg_size_pretty( pg_total_relation_size('binary_data') );
+
+* get number of row locks for table inversions (indicating the number of active
+  inversions):
+
+	select count(relation::regclass) from pg_catalog.pg_locks l left join
+	pg_catalog.pg_database db on (db.oid = l.database) where datname='cr_hydra'
+	AND NOT pid = pg_backend_pid() and mode=    'RowShareLock';
+
+## Possible problems
+
+* dead inversions in the database: If the .crh files are deleted in the file
+  system, currently there is now way to properly remove the corresponding
+  orphaned inversions in the database.
+
+  Multiple solutions come mind:
+
+	* if the source computer and the file system can be accessed, a command
+	  crh_cleanup could check all inversions of the source computer for
+	  existing .crh files
+	* inversions could have a life time after which they need to be downloaded
+	  (i.e., 30 days after finish/upload of the inversion to the db)
+
+## Ideas
+
+### Thread pool and number of workers
+
+We could try to better facilitate the number of threads to use by analyzing the
+inversions for 2 or 2.5 D: In the 2D case only one thread is required per
+inversion, while for 2.5D we can use more threads for each inversion.
+This would, however, require to actively start and stop threads in reaction to
+the currently running inversions.
+
+### Groups
+
+I think it would be nice to introduce groups and restrict certain workers to
+certain groups. That way we could implement a local-only worker interface:
+
+	crh_add --with-local_inv
+
+would then query the inversions using a newly (randomly generated) group and
+spawn a local crh_worker
+
+	crh_worker --group %(group)s --quit
+
+which in turn would on only work on the given group and quit itself after
+running all inversions in the group.
+
+

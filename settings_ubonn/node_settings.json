@@ -1,0 +1,22 @@
+{
+	"nathan": {
+		"nice_level": 19,
+		"nr_cpus": 4,
+		"nr_threads": 1
+	},
+	"titan": {
+		"nice_level": 10,
+		"nr_cpus": 6,
+		"nr_threads": 2
+	},
+	"topas": {
+		"nice_level": 10,
+		"nr_cpus": 6,
+		"nr_threads": 2
+	},
+	"raptor": {
+		"nice_level": 19,
+		"nr_cpus": 21,
+		"nr_threads": 3
+	}
+}

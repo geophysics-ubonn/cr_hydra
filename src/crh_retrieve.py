@@ -11,6 +11,9 @@ import json
 
 from sqlalchemy import create_engine
 import IPython
+
+from cr_hydra.settings import get_config
+
 IPython
 
 logging.basicConfig(
@@ -20,24 +23,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# settings: should be read from config file/cmd
-number_of_workers = 2
-number_of_worker_threads = 2
-database_login = 'postgresql://mweigand:mweigand@localhost/cr_hydra'
-work_directory = './'
-query_interval = 5
-# settings end
+global_settings = get_config()
 
 engine = create_engine(
-    database_login, echo=False, pool_size=10, pool_recycle=3600,
+    global_settings['general']['db_credentials'],
+    echo=False, pool_size=10, pool_recycle=3600,
 )
 
 
-def _is_finished(sim_id):
-    result = engine.execute(
-        'select tomodir_finished_file from inversions ' +
-        'where index=%(sim_id)s and status=\'finished\' ' +
-        'and downloaded=\'f\';',
+def _is_finished(sim_id, conn):
+    """Check if the simulation has been processed.
+
+    Ignore any rows already locked by other processes (i.e., concurrent runs
+    of crh_retrieve)
+
+    """
+    result = conn.execute(
+        ' '.join((
+            'select tomodir_finished_file from inversions',
+            'where index=%(sim_id)s and status=\'finished\'',
+            'and downloaded=\'f\'',
+            'for update',
+            'skip locked',
+            ';'
+        )),
         sim_id=sim_id
     )
     if result.rowcount == 1:
@@ -50,7 +59,11 @@ def _check_and_retrieve(filename):
     logger.info('Checking: {}'.format(filename))
     sim_settings = json.load(open(filename, 'r'))
     print(sim_settings)
-    final_data_id = _is_finished(sim_settings['sim_id'])
+
+    conn = engine.connect()
+    transaction = conn.begin_nested()
+
+    final_data_id = _is_finished(sim_settings['sim_id'], conn)
 
     tomodir_name = os.path.basename(filename)[:-4]
     basedir = os.path.dirname(filename)
@@ -59,7 +72,7 @@ def _check_and_retrieve(filename):
 
     if final_data_id is not None:
         # we got data
-        result = engine.execute(
+        result = conn.execute(
             'select hash, data from binary_data where index=%(data_id)s;',
             data_id=final_data_id
         )
@@ -92,22 +105,23 @@ def _check_and_retrieve(filename):
             # now extract
             tar.extractall('.')
         os.chdir(pwd)
-        mark_sim_as_downloaded(sim_settings['sim_id'])
+        mark_sim_as_downloaded(sim_settings['sim_id'], conn)
         os.unlink(filename)
         # IPython.embed()
+        transaction.commit()
+        conn.close()
 
 
-def mark_sim_as_downloaded(sim_id):
+def mark_sim_as_downloaded(sim_id, conn):
     # mark the simulation as downloaded and delete the files
-    result = engine.execute(
+    result = conn.execute(
         'select tomodir_unfinished_file, tomodir_finished_file from ' +
         'inversions where index=%(sim_id)s;',
         sim_id=sim_id
     )
     assert result.rowcount == 1
     file_ids = list(result.fetchone())
-    print(file_ids, type(file_ids))
-    result = engine.execute(
+    result = conn.execute(
         'update inversions set ' +
         'tomodir_unfinished_file=NULL, ' +
         'tomodir_finished_file=NULL, ' +
@@ -116,18 +130,21 @@ def mark_sim_as_downloaded(sim_id):
     )
     assert result.rowcount == 1
     # delete
-    result = engine.execute(
+    result = conn.execute(
         'delete from binary_data where index in (%(id1)s, %(id2)s);',
         id1=file_ids[0],
         id2=file_ids[1],
     )
 
 
-if __name__ == '__main__':
-    # walk the current directory
+def main():
     for root, dirs, files in os.walk('.'):
         dirs.sort()
         files.sort()
         for filename in files:
             if filename.endswith('.crh'):
                 _check_and_retrieve(root + os.sep + filename)
+
+
+if __name__ == '__main__':
+    main()

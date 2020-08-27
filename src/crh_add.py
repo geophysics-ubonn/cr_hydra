@@ -3,6 +3,7 @@
 """Look for all unfinished tomodirs in the present directory (and
 subdirectories), e called.
 """
+import logging
 import shutil
 import uuid
 import os
@@ -11,11 +12,17 @@ import json
 import tarfile
 import subprocess
 import platform
+
 # import pandas as pd
+import psycopg2
 from sqlalchemy import create_engine
 from optparse import OptionParser
 import IPython
+
+from cr_hydra.settings import get_config
 IPython
+
+logger = logging.getLogger(__name__)
 
 
 def handle_cmd_options():
@@ -70,7 +77,6 @@ def is_tomodir(subdirectories):
 def check_if_needs_modeling(tomodir):
     """check of we need to run CRMod in a given tomodir
     """
-    print('check for modeling', tomodir)
     required_files = (
         'config' + os.sep + 'config.dat',
         'rho' + os.sep + 'rho.dat',
@@ -90,7 +96,6 @@ def check_if_needs_modeling(tomodir):
     for filename in required_files:
         full_file = tomodir + os.sep + filename
         if not os.path.isfile(full_file):
-            print('does not exist: ', full_file)
             needs_modeling = False
 
     return needs_modeling
@@ -124,14 +129,12 @@ def check_if_needs_inversion(tomodir):
     # check for crmod OR modeling capabilities
     if not os.path.isfile(tomodir + os.sep + 'mod' + os.sep + 'volt.dat'):
         if not check_if_needs_modeling(tomodir):
-            print('no volt.dat and no modeling possible')
             needs_inversion = False
 
     # check if finished
     inv_ctr_file = tomodir + os.sep + 'inv' + os.sep + 'inv.ctr'
     if os.path.isfile(inv_ctr_file):
         inv_lines = open(inv_ctr_file, 'r').readlines()
-        print('inv_lines', inv_lines[-1])
         if inv_lines[-1].startswith('***finished***'):
             needs_inversion = False
 
@@ -144,7 +147,7 @@ def find_unfinished_tomodirs(directory):
     for root, dirs, files in os.walk(directory):
         dirs.sort()
         if is_tomodir(dirs):
-            print('found tomodir: ', root)
+            logging.info('found tomodir: {}'.format(root))
             if check_if_needs_modeling(root):
                 needs_modeling.append(root)
             if check_if_needs_inversion(root):
@@ -153,7 +156,7 @@ def find_unfinished_tomodirs(directory):
     return sorted(needs_modeling), sorted(needs_inversion)
 
 
-def _register_tomodir_for_processing(tomodir_raw, sim_type):
+def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
     """
     sim_type: inv|mod
     """
@@ -186,21 +189,15 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     os.chdir(pwdx)
 
     # prepare data for simulation registration
-    # crh_settings['archive_file'] = os.path.basename(archive_file)
-    # crh_settings['archive_hash'] = sha256
     crh_settings['source_computer'] = platform.node()
     crh_settings['sim_type'] = sim_type
-    # hydra_dir
-    # hydra_dir = '/home/mweigand/hydra'
-    # crh_settings['hydra_location'] = hydra_dir + os.sep + os.path.basename(
-    #   # archive_file)
     crh_settings['crh_file'] = os.path.abspath(crh_file)
     crh_settings['username'] = username
 
     engine = create_engine(
-        'postgresql://mweigand:mweigand@localhost/cr_hydra',
+        global_settings['general']['db_credentials'],
         echo=False,
-        pool_size=10,
+        pool_size=1,
         pool_recycle=3600,
     )
 
@@ -209,7 +206,6 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
         'insert into binary_data (filename, hash, data) values',
         '(%(filename)s, %(file_hash)s, %(bin_data)s) returning index;'
     ))
-    import psycopg2
     sha256 = subprocess.check_output(
         'sha256sum "{}"'.format(archive_file), shell=True).decode('utf-8')
     sha256 = sha256[0:sha256.find(' ')]
@@ -223,8 +219,7 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     assert result.rowcount == 1
     file_id = result.fetchone()[0]
     crh_settings['tomodir_unfinished_file'] = file_id
-    # IPython.embed()
-    # exit()
+
     query = ' '.join((
         'insert into inversions (',
         'username,',
@@ -249,13 +244,13 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     )
     assert result.rowcount == 1
     sim_id = result.fetchone()[0]
-    print(query)
+
     crh_settings['sim_id'] = sim_id
     # update crh file
     with open(crh_file, 'w') as fid:
         json.dump(crh_settings, fid, sort_keys=True, indent=4)
-    # now move the archive file to the hydra directory
-    # shutil.move(archive_file, crh_settings['hydra_location'])
+
+    # delete archive file
     os.unlink(archive_file)
     # now we are ready for processing
     engine.execute(
@@ -264,9 +259,12 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     )
     # delete tomodir
     shutil.rmtree(tomodir)
+    logger.info('Added {} to queue'.format(tomodir))
 
 
 def main():
+
+    global_settings = get_config()
     # options = handle_cmd_options()
     needs_modeling, needs_inversion = find_unfinished_tomodirs('.')
     print('-' * 20)
@@ -274,9 +272,9 @@ def main():
     print('inversion:', needs_inversion)
     print('-' * 20)
     for directory in needs_modeling:
-        _register_tomodir_for_processing(directory, 'mod')
+        _register_tomodir_for_processing(directory, 'mod', global_settings)
     for directory in needs_inversion:
-        _register_tomodir_for_processing(directory, 'inv')
+        _register_tomodir_for_processing(directory, 'inv', global_settings)
     # IPython.embed()
 
 
