@@ -2,6 +2,11 @@
 
 ## TODO
 
+* Test with:
+
+	* Missing CRTomo binary
+	* inversion that leads to an error (error.dat)
+
 * Implement a check for the database:
 	* duplicate entries (hash, crh_file)
 

@@ -2,6 +2,7 @@
 """
 
 """
+import glob
 import time
 import datetime
 import hashlib
@@ -75,24 +76,59 @@ class hydra_worker(Process):
 
         """
         while(True):
-            self._query_db_and_run_sim()
-            # exit()
-            time.sleep(query_interval)
+            if self._check_node_active():
+                did_sim = self._query_db_and_run_sim()
+                if did_sim:
+                    # try to get the next inversion immediately
+                    interval = 0
+                else:
+                    interval = query_interval
+            else:
+                # sleep 30 seconds
+                self.logger.info(
+                    'Node was disabled by db, sleeping 30 seconds')
+                interval = 30
+            time.sleep(interval)
+
+    def _check_node_active(self):
+        """Check if this node should be active
+        """
+        result = self.engine.execute(
+            'select active from node_settings where node_name=%(node_name)s;',
+            node_name=node_name
+        )
+        if result.rowcount == 1:
+            is_active = result.fetchone()[0]
+            return is_active
+        # by default we assume that this node is active
+        return True
 
     def _query_db_and_run_sim(self):
+        """
+        Returns
+        -------
+        did_sim: bool
+            We want to know if there were simulations to run, e.g., to adapt
+            the sleeping interval between db queries
+        """
         self.logger.info('Querying DB for new simulations')
         # query database for open inversions
         self.conn = self.engine.connect()
         transaction = self.conn.begin_nested()
+        # get the next free, unfinished simulation
         r = self.conn.execute(
-            'select index from inversions where '
-            'ready_for_processing=\'t\' and status <> \'finished\' order by '
-            'index asc for update skip locked limit 1;'
+            ' '.join((
+                'select index from inversions where ',
+                'ready_for_processing=\'t\' and status <> \'finished\'',
+                'and error = \'f\'',
+                'order by ',
+                'index asc for update skip locked limit 1;'
+            ))
         )
         if r.rowcount == 0:
             transaction.commit()
             self.conn.close()
-            return
+            return False
         # now the row is locked for us
         job_id = r.fetchone()[0]
         self.logger.info('job id: {}'.format(job_id))
@@ -107,6 +143,7 @@ class hydra_worker(Process):
             query, self.conn, params={'index': job_id})
 
         self.logger.info('Processing job id: {}'.format(job_id))
+
         self._run_sim(
             job_id,
             int(job_data['tomodir_unfinished_file'].values.take(0)),
@@ -118,6 +155,7 @@ class hydra_worker(Process):
         # this actually updates the database
         transaction.commit()
         self.conn.close()
+        return True
 
     def _run_sim(self, job_id, file_id, sim_type):
         tempdir = tempfile.mkdtemp('_crhydra')
@@ -145,13 +183,49 @@ class hydra_worker(Process):
         os.chdir(tempdir)
         self.logger.info('Running inversion')
         dt_inv_started = datetime.datetime.now(tz=datetime.timezone.utc)
-        subprocess.check_output(
-            'nice -n {} td_run_all_local -n 1 -t {}'.format(
-                nice_level,
-                number_of_worker_threads
-            ),
-            shell=True
-        )
+        try:
+            subprocess.check_output(
+                'nice -n {} td_run_all_local -n 1 -t {}'.format(
+                    nice_level,
+                    number_of_worker_threads
+                ),
+                stderr=subprocess.STDOUT,
+                shell=True
+            )
+        except subprocess.CalledProcessError as e:
+            self.logger.error('There was an error running CRTomo')
+            self.logger.error(e)
+            # special case: an error.dat file appeared, indicating that the
+            # inversion itself broke. This is seen as a successful simulation
+            # from the view of cr_hydra
+            tomodir_name = glob.glob(tempdir + '/*')[0]
+            error_file = tempdir + os.sep + tomodir_name + 'exe/error.dat'
+            if os.path.isfile(error_file):
+                pass
+            else:
+                # it seems something went wrong while running CRTomo...
+                query = ' '.join((
+                    'update inversions set',
+                    'error = \'t\',',
+                    'error_msg=%(error_msg)s,',
+                    'datetime_inversion_started=%(dt_started)s,',
+                    'datetime_finished=%(dt_finished)s, ',
+                    'inv_computer=%(node_name)s',
+                    'where index=%(job_id)s;',
+                ))
+                r = self.conn.execute(
+                    query,
+                    {
+                        'job_id': job_id,
+                        'node_name': node_name,
+                        'dt_started': dt_inv_started,
+                        'dt_finished': datetime.datetime.now(
+                            tz=datetime.timezone.utc),
+                        'error_msg': e.cmd + '_' + e.output.decode('utf-8'),
+                    }
+                )
+                return
+
         dt_inv_ended = datetime.datetime.now(tz=datetime.timezone.utc)
         # TODO: probably a few checks would be in order
         self.logger.info('finished')

@@ -18,5 +18,15 @@
 		"nice_level": 19,
 		"nr_cpus": 21,
 		"nr_threads": 3
+	},
+	"g4": {
+		"nice_level": 19,
+		"nr_cpus": 8,
+		"nr_threads": 3
+	},
+	"geocip-03": {
+		"nice_level": 19,
+		"nr_cpus": 8,
+		"nr_threads": 3
 	}
 }

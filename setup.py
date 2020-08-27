@@ -31,7 +31,13 @@ if __name__ == '__main__':
             '': 'src',
             'cr_hydra': 'lib/cr_hydra',
         },
-        # install_requires=['numpy', 'scipy', 'pandas', 'matplotlib'],
         py_modules=scripts,
         entry_points=entry_points,
+        install_requires=[
+            'sqlalchemy',
+            'psycopg2-binary',
+            'ipython',
+            'numpy',
+            'pandas',
+        ],
     )

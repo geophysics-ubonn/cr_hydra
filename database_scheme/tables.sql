@@ -27,6 +27,9 @@ create table "inversions" (
     crh_file text,
 	-- everything is uploaded
 	ready_for_processing BOOLEAN DEFAULT False,
+	-- indicate if this inversion was tried and failed
+	error boolean default false,
+	error_msg text,
 	-- set to "finished" when inversion is ready
 	status text default 'unfinished',
 	inv_computer text,
@@ -49,5 +52,6 @@ create table "node_settings" (
 	-- computes to:
 	-- nr_cpus / nr_threads
 	nr_cpus integer default 2,
-	nr_threads integer default 2
+	nr_threads integer default 2,
+	active boolean default true
 );
