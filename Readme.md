@@ -147,4 +147,10 @@ spawn a local crh_worker
 which in turn would on only work on the given group and quit itself after
 running all inversions in the group.
 
+## Notes on Debian packaging
 
+Because I always forget...
+
+* Create initial changelog (needs some manual tweaking afterwards)
+
+	dch --create -v 1.0-0 --package cr-hydra

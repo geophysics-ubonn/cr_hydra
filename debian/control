@@ -1,0 +1,14 @@
+Source: cr-hydra
+Section: python
+Maintainer: Maximilian Weigand <mweigand@geo.uni-bonn.de>
+Architecture: all
+Build-Depends: debhelper (>= 9), dh-python,
+ python3-all-dev (>= 3.1.2-8~),
+ python-setuptools (>= 0.6b3-1~), python3-setuptools,
+Depends: ${python3:Depends}, ${misc:Depends}
+Description: cr_hydra program suite for distributed CRTomo inversions
+
+Package: python3-crhydra
+Architecture: all
+Description: cr_hydra program suite for distributed CRTomo inversions
+
