@@ -99,6 +99,7 @@ information such as:
 
 * CREATE USER mweigand WITH PASSWORD 'mweigand' CREATEDB;
 * create database cr_hydra owner mweigand;
-* postgresql://mweigand:mweigand@localhost/cr_hydra -f tables.sql
-*
-SELECT pg_size_pretty( pg_total_relation_size('binary_data') );
+* psql postgresql://mweigand:mweigand@localhost/cr_hydra -f tables.sql
+* Get size of data table:
+
+	SELECT pg_size_pretty( pg_total_relation_size('binary_data') );

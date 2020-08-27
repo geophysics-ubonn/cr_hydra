@@ -2,13 +2,14 @@
 """
 
 """
+import time
+import hashlib
+import io
 from multiprocessing import Process
-# import threading
 import logging
 import tarfile
 import os
 import tempfile
-import shutil
 import pandas as pd
 import subprocess
 from sqlalchemy import create_engine
@@ -26,13 +27,13 @@ number_of_workers = 2
 number_of_worker_threads = 2
 database_login = 'postgresql://mweigand:mweigand@localhost/cr_hydra'
 work_directory = './'
+query_interval = 5
 # settings end
 
 
 class hydra_worker(Process):
 
     def __init__(self, name, settings, **kwargs):
-        print('init worker')
         Process.__init__(self)
         self.name = name
         self.settings = settings
@@ -40,103 +41,131 @@ class hydra_worker(Process):
         self.engine = create_engine(
             database_login, echo=False, pool_size=10, pool_recycle=3600,
         )
+        print('init:', self.engine.pool.status())
+        # IPython.embed()
 
     def run(self):
         """
 
         """
-        print('run')
+        while(True):
+            self._query_db_and_run_sim()
+            # exit()
+            time.sleep(query_interval)
+
+    def _query_db_and_run_sim(self):
+        self.logger.info('Querying DB for new simulations')
         # query database for open inversions
-        conn = self.engine.connect()
-        transaction = conn.begin_nested()
-        r = conn.execute(
+        self.conn = self.engine.connect()
+        transaction = self.conn.begin_nested()
+        r = self.conn.execute(
             'select index from inversions where '
             'ready_for_processing=\'t\' and status <> \'finished\' order by '
             'index desc for update skip locked limit 1;'
         )
-        # now the row is locked for us
+        print('query 1:', self.engine.pool.status())
         if r.rowcount == 0:
+            transaction.commit()
+            self.conn.close()
             return
+        # now the row is locked for us
         job_id = r.fetchone()[0]
         self.logger.info('job id: {}'.format(job_id))
         query = ' '.join((
             'select',
-            'tomodir_unfinished_file, sim_type',
+            'tomodir_unfinished_file, sim_type,',
             'ready_for_processing, status',
             'from inversions',
             'where index=%(index)s;'
         ))
-        job_data = pd.read_sql_query(query, conn, params={'index': job_id})
+        job_data = pd.read_sql_query(
+            query, self.conn, params={'index': job_id})
 
+        print('query 2:', self.engine.pool.status())
         self.logger.info('Processing job id: {}'.format(job_id))
-        sim_result = self._run_sim(
+        self._run_sim(
             job_id,
-            job_data['tomodir_unfinished_file'].values.take(0),
+            int(job_data['tomodir_unfinished_file'].values.take(0)),
             # job_data['hydra_location'].values.take(0),
             # job_data['archive_hash'].values.take(0),
             job_data['sim_type'].values.take(0)
         )
 
+        print('after run_sim:', self.engine.pool.status())
+        # this actually updates the database
         transaction.commit()
-        conn.close()
+        self.conn.close()
+        print('after close:', self.engine.pool.status())
 
-    def _run_sim(self, remote_file, file_hash, sim_type):
-        self.logger.info(remote_file)
+    def _run_sim(self, job_id, file_id, sim_type):
         tempdir = tempfile.mkdtemp('_crhydra')
         self.logger.info('tempdir: {}'.format(tempdir))
-        outfile = tempdir + os.sep + os.path.basename(remote_file)
-        shutil.copy(remote_file, outfile)
-        # make sure the hashes compare
-        assert self._get_hash_sha256(outfile) == file_hash
-        # unpack
-        archive = tarfile.open(outfile, 'r')
-        archive.extractall(tempdir)
+
+        # get unfinished data and unpack
+        result = self.conn.execute(
+            'select hash, data from binary_data where index=%(file_id)s;',
+            file_id=file_id
+        )
+        file_hash, binary_data = result.fetchone()
+
+        # check hash
+        m = hashlib.sha256()
+        m.update(binary_data)
+        assert file_hash == m.hexdigest()
+
+        # unpack to tempir
+        fid = io.BytesIO(bytes(binary_data))
+        with tarfile.open(fileobj=fid, mode='r') as tar:
+            tar.extractall(path=tempdir)
 
         # call td run
         old_pwd = os.getcwd()
-        tomodir_name = archive.getnames()[0]
-        os.chdir(tempdir + os.sep + tomodir_name)
+        os.chdir(tempdir)
         self.logger.info('Running inversion')
         subprocess.check_output(
             'td_run_all_local -n 1 -t {}'.format(number_of_worker_threads),
             shell=True
         )
-        self.logger.info('finished')
-
-        os.chdir('..')
-        self.logger.info('archiving results: {}'.format(os.getcwd()))
-        archive_file = os.path.abspath(
-            os.path.basename(outfile) + '.crh_finished'
-        )
-        print(os.getcwd(), archive_file, tomodir_name)
-        with tarfile.open(archive_file, 'w:xz') as tar:
-            tar.add(tomodir_name, recursive=True)
-
-        self.logger.info('moving archive')
-        final_file = os.path.dirname(
-            remote_file) + os.sep + os.path.basename(archive_file)
-        shutil.move(
-            archive_file,
-            final_file,
-        )
-
         # TODO: probably a few checks would be in order
+        self.logger.info('finished')
+        # create in-memory archive
+        finished_data = io.BytesIO()
+        with tarfile.open(fileobj=finished_data, mode='w:xz') as tar_out:
+            tar_out.add('.')
+
+        # create hash of final data
+        m = hashlib.sha256()
+        finished_data.seek(0)
+        m.update(finished_data.read())
+        hash_final = m.hexdigest()
+
+        # upload
+        finished_data.seek(0)
+        result = self.conn.execute(
+            'insert into binary_data (hash, data) values' +
+            '(%(data_hash)s, %(bin_data)s) returning index;',
+            data_hash=hash_final,
+            bin_data=finished_data.read()
+        )
+        finished_data_index = result.fetchone()[0]
+        print('after upload:', self.engine.pool.status())
+
         os.chdir(old_pwd)
-        # import IPython
-        # IPython.embed()
-        # sim_result = True
-        if sim_result:
-            self.logger.info('updating to finished')
-            # mark as finished
-            query = ' '.join((
-                'update inversions set status=\'finished\' where',
-                'index=%(job_id)s;',
-            ))
-            print(query, job_id)
-            r = conn.execute(query, {'job_id': job_id})
-            # print(r.rowcount)
-            # IPython.embed()
-        return True
+        self.logger.info('updating to finished')
+        # mark as finished
+        query = ' '.join((
+            'update inversions set status=\'finished\',',
+            'tomodir_finished_file=%(finished_data)s where',
+            'index=%(job_id)s;',
+        ))
+        r = self.conn.execute(
+            query,
+            {
+                'job_id': job_id,
+                'finished_data': finished_data_index
+            }
+        )
+        assert r.rowcount == 1
 
     def _get_hash_sha256(self, filename):
         sha256 = subprocess.check_output(
@@ -147,6 +176,7 @@ class hydra_worker(Process):
 
 if __name__ == '__main__':
     worker1 = hydra_worker('thread1', {})
+    # worker1.run()
     worker2 = hydra_worker('thread2', {})
     worker1.start()
     worker2.start()

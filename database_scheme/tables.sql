@@ -28,5 +28,6 @@ create table "inversions" (
 	-- everything is uploaded
 	ready_for_processing BOOLEAN DEFAULT False,
 	-- set to "finished" when inversion is ready
-	status text default 'unfinished'
+	status text default 'unfinished',
+	downloaded BOOLEAN DEFAULT False
 );
