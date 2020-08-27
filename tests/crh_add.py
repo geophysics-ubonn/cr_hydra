@@ -11,7 +11,7 @@ import json
 import tarfile
 import subprocess
 import platform
-import pandas as pd
+# import pandas as pd
 from sqlalchemy import create_engine
 from optparse import OptionParser
 import IPython
@@ -186,17 +186,14 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     os.chdir(pwdx)
 
     # prepare data for simulation registration
-    crh_settings['archive_file'] = os.path.basename(archive_file)
-    sha256 = subprocess.check_output(
-        'sha256sum "{}"'.format(archive_file), shell=True).decode('utf-8')
-    sha256 = sha256[0:sha256.find(' ')]
-    crh_settings['archive_hash'] = sha256
-    crh_settings['computer'] = platform.node()
+    # crh_settings['archive_file'] = os.path.basename(archive_file)
+    # crh_settings['archive_hash'] = sha256
+    crh_settings['source_computer'] = platform.node()
     crh_settings['sim_type'] = sim_type
     # hydra_dir
-    hydra_dir = '/home/mweigand/hydra'
-    crh_settings['hydra_location'] = hydra_dir + os.sep + os.path.basename(
-        archive_file)
+    # hydra_dir = '/home/mweigand/hydra'
+    # crh_settings['hydra_location'] = hydra_dir + os.sep + os.path.basename(
+    #   # archive_file)
     crh_settings['crh_file'] = os.path.abspath(crh_file)
     crh_settings['username'] = username
 
@@ -210,30 +207,56 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type):
     # upload archive to database
     query = ' '.join((
         'insert into binary_data (filename, hash, data) values',
-        '(%(filename)s, %(file_hash)s, %(bin_data)s);'
+        '(%(filename)s, %(file_hash)s, %(bin_data)s) returning index;'
     ))
     import psycopg2
+    sha256 = subprocess.check_output(
+        'sha256sum "{}"'.format(archive_file), shell=True).decode('utf-8')
+    sha256 = sha256[0:sha256.find(' ')]
+
     result = engine.execute(
         query,
         filename=os.path.basename(archive_file),
         file_hash=sha256,
         bin_data=psycopg2.Binary(open(archive_file, 'rb').read())
     )
-    IPython.embed()
-    exit()
-    df = pd.DataFrame(
-        crh_settings, columns=list(crh_settings.keys()), index=[0, ])
-    df.to_sql('inversions', engine, if_exists='append', index=False)
-    sim_id = engine.execute(
-        'select index from inversions order '
-        'by index desc limit 1;'
-    ).fetchone()[0]
+    assert result.rowcount == 1
+    file_id = result.fetchone()[0]
+    crh_settings['tomodir_unfinished_file'] = file_id
+    # IPython.embed()
+    # exit()
+    query = ' '.join((
+        'insert into inversions (',
+        'username,',
+        'datetime_init,',
+        'tomodir_unfinished_file,',
+        'source_computer,',
+        'sim_type,',
+        'crh_file',
+        ') values (',
+        '%(username)s,',
+        '%(datetime_init)s,',
+        '%(tomodir_unfinished_file)s,',
+        '%(source_computer)s,',
+        '%(sim_type)s,',
+        '%(crh_file)s',
+        ')',
+        'returning index;'
+    ))
+    result = engine.execute(
+        query,
+        crh_settings
+    )
+    assert result.rowcount == 1
+    sim_id = result.fetchone()[0]
+    print(query)
     crh_settings['sim_id'] = sim_id
     # update crh file
     with open(crh_file, 'w') as fid:
         json.dump(crh_settings, fid, sort_keys=True, indent=4)
     # now move the archive file to the hydra directory
-    shutil.move(archive_file, crh_settings['hydra_location'])
+    # shutil.move(archive_file, crh_settings['hydra_location'])
+    os.unlink(archive_file)
     # now we are ready for processing
     engine.execute(
         'update inversions set '

@@ -6,6 +6,8 @@
   called): sftp:// and file://. That way we can easily differentiate between
   local and network files.
 * Fix the id-bug in crh_add (possible race condition)
+* Linter:
+	* duplicate entries (hash, crh_file)
 
 ## Introduction
 
@@ -99,3 +101,4 @@ information such as:
 * create database cr_hydra owner mweigand;
 * postgresql://mweigand:mweigand@localhost/cr_hydra -f tables.sql
 *
+SELECT pg_size_pretty( pg_total_relation_size('binary_data') );

@@ -61,7 +61,7 @@ class hydra_worker(Process):
         self.logger.info('job id: {}'.format(job_id))
         query = ' '.join((
             'select',
-            'archive_file, archive_hash, sim_type, hydra_location,'
+            'tomodir_unfinished_file, sim_type',
             'ready_for_processing, status',
             'from inversions',
             'where index=%(index)s;'
@@ -70,22 +70,12 @@ class hydra_worker(Process):
 
         self.logger.info('Processing job id: {}'.format(job_id))
         sim_result = self._run_sim(
-            job_data['hydra_location'].values.take(0),
-            job_data['archive_hash'].values.take(0),
+            job_id,
+            job_data['tomodir_unfinished_file'].values.take(0),
+            # job_data['hydra_location'].values.take(0),
+            # job_data['archive_hash'].values.take(0),
             job_data['sim_type'].values.take(0)
         )
-        # sim_result = True
-        if sim_result:
-            self.logger.info('updating to finished')
-            # mark as finished
-            query = ' '.join((
-                'update inversions set status=\'finished\' where',
-                'index=%(job_id)s;',
-            ))
-            print(query, job_id)
-            r = conn.execute(query, {'job_id': job_id})
-            # print(r.rowcount)
-            # IPython.embed()
 
         transaction.commit()
         conn.close()
@@ -134,6 +124,18 @@ class hydra_worker(Process):
         os.chdir(old_pwd)
         # import IPython
         # IPython.embed()
+        # sim_result = True
+        if sim_result:
+            self.logger.info('updating to finished')
+            # mark as finished
+            query = ' '.join((
+                'update inversions set status=\'finished\' where',
+                'index=%(job_id)s;',
+            ))
+            print(query, job_id)
+            r = conn.execute(query, {'job_id': job_id})
+            # print(r.rowcount)
+            # IPython.embed()
         return True
 
     def _get_hash_sha256(self, filename):
