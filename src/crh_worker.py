@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-"""
+"""This cr_hydra worker program - it queries the database and does the actual
+processing of simulations (modelings/inversions).
 
 """
+import shutil
 import glob
 import time
 import datetime
@@ -14,6 +16,7 @@ import platform
 import os
 import tempfile
 import subprocess
+from optparse import OptionParser
 
 import pandas as pd
 from sqlalchemy import create_engine
@@ -54,6 +57,7 @@ if results.rowcount == 1:
     (nice_level, nr_cpus, number_of_worker_threads) = results.fetchone()
     number_of_workers = int(nr_cpus / number_of_worker_threads)
 else:
+    # hopefully sane defaults
     number_of_workers = 2
     number_of_worker_threads = 2
     nice_level = 20
@@ -61,11 +65,11 @@ else:
 
 class hydra_worker(Process):
 
-    def __init__(self, name, settings, **kwargs):
+    def __init__(self, name, cmd_opts, **kwargs):
         Process.__init__(self)
         self.name = name
-        self.settings = settings
-        self.logger = logging.getLogger(name)
+        self.cmd_opts = cmd_opts
+        self.logger = logging.getLogger('crh_worker-' + name)
         self.engine = create_engine(
             global_settings['general']['db_credentials'],
             echo=False, pool_size=10, pool_recycle=3600,
@@ -82,6 +86,12 @@ class hydra_worker(Process):
                     # try to get the next inversion immediately
                     interval = 0
                 else:
+                    if self.cmd_opts.quit_after_empty:
+                        self.logger.info(
+                            'thread quitting due to empty db queue ' +
+                            '(--quit option)'
+                        )
+                        return
                     interval = query_interval
             else:
                 # sleep 30 seconds
@@ -120,7 +130,7 @@ class hydra_worker(Process):
             ' '.join((
                 'select index from inversions where ',
                 'ready_for_processing=\'t\' and status <> \'finished\'',
-                'and error = \'f\'',
+                'and error=0',
                 'order by ',
                 'index asc for update skip locked limit 1;'
             ))
@@ -183,6 +193,8 @@ class hydra_worker(Process):
         os.chdir(tempdir)
         self.logger.info('Running inversion')
         dt_inv_started = datetime.datetime.now(tz=datetime.timezone.utc)
+        # 0: everything ok
+        error_code = 0
         try:
             subprocess.check_output(
                 'nice -n {} td_run_all_local -n 1 -t {}'.format(
@@ -193,41 +205,45 @@ class hydra_worker(Process):
                 shell=True
             )
         except subprocess.CalledProcessError as e:
-            self.logger.error('There was an error running CRTomo')
+            self.logger.error('There was an error executing CRTomo')
             self.logger.error(e)
-            # special case: an error.dat file appeared, indicating that the
-            # inversion itself broke. This is seen as a successful simulation
-            # from the view of cr_hydra
-            tomodir_name = glob.glob(tempdir + '/*')[0]
-            error_file = tempdir + os.sep + tomodir_name + 'exe/error.dat'
-            if os.path.isfile(error_file):
-                pass
-            else:
-                # it seems something went wrong while running CRTomo...
-                query = ' '.join((
-                    'update inversions set',
-                    'error = \'t\',',
-                    'error_msg=%(error_msg)s,',
-                    'datetime_inversion_started=%(dt_started)s,',
-                    'datetime_finished=%(dt_finished)s, ',
-                    'inv_computer=%(node_name)s',
-                    'where index=%(job_id)s;',
-                ))
-                r = self.conn.execute(
-                    query,
-                    {
-                        'job_id': job_id,
-                        'node_name': node_name,
-                        'dt_started': dt_inv_started,
-                        'dt_finished': datetime.datetime.now(
-                            tz=datetime.timezone.utc),
-                        'error_msg': e.cmd + '_' + e.output.decode('utf-8'),
-                    }
-                )
-                return
+            # it seems something went wrong while running CRTomo...
+            query = ' '.join((
+                'update inversions set',
+                'error = %(error_code)s,',
+                'error_msg=%(error_msg)s,',
+                'datetime_inversion_started=%(dt_started)s,',
+                'datetime_finished=%(dt_finished)s, ',
+                'inv_computer=%(node_name)s',
+                'where index=%(job_id)s;',
+            ))
+            r = self.conn.execute(
+                query,
+                {
+                    'job_id': job_id,
+                    'error_code': 2,
+                    'node_name': node_name,
+                    'dt_started': dt_inv_started,
+                    'dt_finished': datetime.datetime.now(
+                        tz=datetime.timezone.utc),
+                    'error_msg': e.cmd + '_' + e.output.decode('utf-8'),
+                }
+            )
+            return
+
+        # special case: an error.dat file appeared, indicating that the
+        # inversion itself broke. This is seen as a successful simulation
+        # from the view of cr_hydra
+        tomodir_name = glob.glob(tempdir + '/*')[0]
+        error_file = os.sep.join((
+            tomodir_name, 'exe', 'error.dat'
+        ))
+        if os.path.isfile(error_file):
+            self.logger.info('found error.dat file - setting error code to 1')
+            error_code = 1
 
         dt_inv_ended = datetime.datetime.now(tz=datetime.timezone.utc)
-        # TODO: probably a few checks would be in order
+
         self.logger.info('finished')
         # create in-memory archive
         finished_data = io.BytesIO()
@@ -256,6 +272,7 @@ class hydra_worker(Process):
         query = ' '.join((
             'update inversions set',
             'status=\'finished\',',
+            'error=%(error_code)s,',
             'tomodir_finished_file=%(finished_data)s,',
             'datetime_inversion_started=%(dt_started)s,',
             'datetime_finished=%(dt_finished)s, ',
@@ -268,11 +285,15 @@ class hydra_worker(Process):
                 'job_id': job_id,
                 'finished_data': finished_data_index,
                 'node_name': node_name,
+                'error_code': error_code,
                 'dt_started': dt_inv_started,
                 'dt_finished': dt_inv_ended,
             }
         )
         assert r.rowcount == 1
+
+        # delete temporary directory
+        shutil.rmtree(tempdir)
 
     def _get_hash_sha256(self, filename):
         sha256 = subprocess.check_output(
@@ -281,10 +302,34 @@ class hydra_worker(Process):
         return sha256
 
 
+def handle_cmd_options():
+    parser = OptionParser()
+    # parser.add_option(
+    #     "-n", "--number",
+    #     dest="number_processes",
+    #     help="How many CRMod/CRTomo instances to start in parallel. " +
+    #     "Default: number of detected CPUs/2",
+    #     type='int',
+    #     default=None,
+    # )
+
+    parser.add_option(
+        "-q", "--quit",
+        dest="quit_after_empty",
+        help="Exit the program when no more simulations are queries in the DB",
+        action='store_true',
+    )
+
+    (options, args) = parser.parse_args()
+    return options
+
+
 def main():
+    cmd_opts = handle_cmd_options()
+
     workers = []
     for i in range(number_of_workers):
-        worker = hydra_worker('thread_{:02}'.format(i), {})
+        worker = hydra_worker('thread_{:02}'.format(i), cmd_opts)
         workers.append(worker)
         worker.start()
 

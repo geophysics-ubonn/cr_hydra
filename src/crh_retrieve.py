@@ -58,7 +58,6 @@ def _is_finished(sim_id, conn):
 def _check_and_retrieve(filename):
     logger.info('Checking: {}'.format(filename))
     sim_settings = json.load(open(filename, 'r'))
-    print(sim_settings)
 
     conn = engine.connect()
     transaction = conn.begin_nested()
@@ -66,7 +65,7 @@ def _check_and_retrieve(filename):
     final_data_id = _is_finished(sim_settings['sim_id'], conn)
 
     tomodir_name = os.path.basename(filename)[:-4]
-    basedir = os.path.dirname(filename)
+    basedir = os.path.abspath(os.path.dirname(filename))
 
     pwd = os.getcwd()
 
@@ -89,7 +88,6 @@ def _check_and_retrieve(filename):
         # unpack
         fid = io.BytesIO(bytes(binary_data))
         with tarfile.open(fileobj=fid, mode='r') as tar:
-            # tar.extractall(path=tempdir)
             assert os.path.abspath(os.getcwd()) == os.path.abspath(basedir)
 
             # make sure there are only files in the archive that go into the

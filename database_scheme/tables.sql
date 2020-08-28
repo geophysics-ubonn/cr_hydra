@@ -8,6 +8,17 @@ create table "binary_data" (
 	data bytea
 );
 
+drop table if exists "error_codes" cascade;
+
+create table "error_codes" (
+	error_code integer primary key,
+	error_msg text
+);
+
+insert into error_codes (error_code, error_msg) values (0, 'ok');
+insert into error_codes (error_code, error_msg) values (1, 'modinv fail (error.dat)');
+insert into error_codes (error_code, error_msg) values (2, 'execution fail');
+
 -- inversions
 drop table if exists "inversions" cascade;
 
@@ -28,7 +39,7 @@ create table "inversions" (
 	-- everything is uploaded
 	ready_for_processing BOOLEAN DEFAULT False,
 	-- indicate if this inversion was tried and failed
-	error boolean default false,
+	error integer references error_codes (error_code) default 0,
 	error_msg text,
 	-- set to "finished" when inversion is ready
 	status text default 'unfinished',
