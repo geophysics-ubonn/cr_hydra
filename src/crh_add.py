@@ -259,7 +259,7 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
     )
     # delete tomodir
     shutil.rmtree(tomodir)
-    logger.info('Added {} to queue'.format(tomodir))
+    logger.info('Added {} to queue'.format(os.path.relpath(tomodir)))
 
 
 def main():

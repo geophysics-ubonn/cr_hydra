@@ -83,6 +83,7 @@ def _check_and_retrieve(filename):
         m.update(binary_data)
         assert file_hash == m.hexdigest()
 
+        logger.info('retrieving and unpacking')
         os.chdir(basedir)
 
         # unpack
