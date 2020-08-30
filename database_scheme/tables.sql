@@ -44,6 +44,7 @@ create table "inversions" (
 	-- set to "finished" when inversion is ready
 	status text default 'unfinished',
 	inv_computer text,
+	inv_cpu text,
 	datetime_inversion_started timestamptz,
 	datetime_finished timestamptz,
 	downloaded BOOLEAN DEFAULT False

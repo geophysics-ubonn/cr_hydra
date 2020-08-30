@@ -20,13 +20,38 @@
 		"nr_threads": 3
 	},
 	"g4": {
-		"nice_level": 19,
+		"nice_level": 10,
 		"nr_cpus": 8,
-		"nr_threads": 3
+		"nr_threads": 4
 	},
 	"geocip-03": {
+		"nice_level": -10,
+		"nr_cpus": 6,
+		"nr_threads": 3
+	},
+	"aetna": {
 		"nice_level": 19,
-		"nr_cpus": 8,
+		"nr_cpus": 9,
+		"nr_threads": 3
+	},
+	"perm": {
+		"nice_level": 0,
+		"nr_cpus": 12,
+		"nr_threads": 3
+	},
+	"k-01": {
+		"nice_level": 10,
+		"nr_cpus": 15,
+		"nr_threads": 3
+	},
+	"k-02": {
+		"nice_level": 10,
+		"nr_cpus": 15,
+		"nr_threads": 3
+	},
+	"k-03": {
+		"nice_level": 10,
+		"nr_cpus": 15,
 		"nr_threads": 3
 	}
 }

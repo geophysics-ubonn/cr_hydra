@@ -193,6 +193,11 @@ class hydra_worker(Process):
         os.chdir(tempdir)
         self.logger.info('Running inversion')
         dt_inv_started = datetime.datetime.now(tz=datetime.timezone.utc)
+
+        inv_cpu = subprocess.check_output(
+            'cat /proc/cpuinfo | grep "model name" | head -1',
+            shell=True
+        )[13:].decode('utf-8')
         # 0: everything ok
         error_code = 0
         try:
@@ -214,7 +219,8 @@ class hydra_worker(Process):
                 'error_msg=%(error_msg)s,',
                 'datetime_inversion_started=%(dt_started)s,',
                 'datetime_finished=%(dt_finished)s, ',
-                'inv_computer=%(node_name)s',
+                'inv_computer=%(node_name)s,',
+                'inv_cpu=%(inv_cpu)s',
                 'where index=%(job_id)s;',
             ))
             r = self.conn.execute(
@@ -223,6 +229,7 @@ class hydra_worker(Process):
                     'job_id': job_id,
                     'error_code': 2,
                     'node_name': node_name,
+                    'inv_cpu': inv_cpu,
                     'dt_started': dt_inv_started,
                     'dt_finished': datetime.datetime.now(
                         tz=datetime.timezone.utc),
@@ -276,7 +283,8 @@ class hydra_worker(Process):
             'tomodir_finished_file=%(finished_data)s,',
             'datetime_inversion_started=%(dt_started)s,',
             'datetime_finished=%(dt_finished)s, ',
-            'inv_computer=%(node_name)s',
+            'inv_computer=%(node_name)s,',
+            'inv_cpu=%(inv_cpu)s',
             'where index=%(job_id)s;',
         ))
         r = self.conn.execute(
@@ -285,6 +293,7 @@ class hydra_worker(Process):
                 'job_id': job_id,
                 'finished_data': finished_data_index,
                 'node_name': node_name,
+                'inv_cpu': inv_cpu,
                 'error_code': error_code,
                 'dt_started': dt_inv_started,
                 'dt_finished': dt_inv_ended,
