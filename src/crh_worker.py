@@ -197,7 +197,7 @@ class hydra_worker(Process):
         inv_cpu = subprocess.check_output(
             'cat /proc/cpuinfo | grep "model name" | head -1',
             shell=True
-        )[13:].decode('utf-8')
+        )[13:].decode('utf-8').strip()
         # 0: everything ok
         error_code = 0
         try:
