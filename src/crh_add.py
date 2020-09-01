@@ -4,17 +4,16 @@
 subdirectories), e called.
 """
 import logging
+import hashlib
+import io
 import shutil
 import uuid
 import os
 import datetime
 import json
 import tarfile
-import subprocess
 import platform
 
-# import pandas as pd
-import psycopg2
 from sqlalchemy import create_engine
 from optparse import OptionParser
 import IPython
@@ -45,12 +44,13 @@ def handle_cmd_options():
     #     default=None,
     # )
 
-    # parser.add_option(
-    #     "-r", "--reverse",
-    #     dest="reverse_lists",
-    #     help="Reverse directory lists before working with them",
-    #     action='store_true',
-    # )
+    parser.add_option(
+        "-f", "--force",
+        dest="force_registration",
+        help="Assume that no other crh_add is running" +
+        " and add not fully initialized simulations",
+        action='store_true',
+    )
 
     (options, args) = parser.parse_args()
     return options
@@ -156,7 +156,8 @@ def find_unfinished_tomodirs(directory):
     return sorted(needs_modeling), sorted(needs_inversion)
 
 
-def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
+def _register_tomodir_for_processing(
+        tomodir_raw, sim_type, global_settings, cmd_options):
     """
     sim_type: inv|mod
     """
@@ -166,8 +167,16 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
 
     crh_file = tomodir + '.crh'
     if os.path.isfile(crh_file):
+        if cmd_options.force_registration:
+            logger.info('Checking existing .crh file: {}'.format(tomodir_raw))
+            # load crh file
+
+            exit()
         # do nothing - assume another process is working with this tomodir
         return
+
+    tomodir_id = username + '_' + str(uuid.uuid4())
+    archive_file = os.path.abspath(tomodir_id + '.tar.xz')
 
     crh_settings = {
         'datetime_init': '{}'.format(
@@ -182,9 +191,8 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
     pwdx = os.getcwd()
     os.chdir(os.path.dirname(tomodir))
 
-    tomodir_id = username + '_' + str(uuid.uuid4())
-    archive_file = os.path.abspath(tomodir_id + '.tar.xz')
-    with tarfile.open(archive_file, 'w:xz') as tar:
+    data_archive = io.BytesIO()
+    with tarfile.open(fileobj=data_archive, mode='w:xz') as tar:
         tar.add(os.path.basename(tomodir), recursive=True)
     os.chdir(pwdx)
 
@@ -198,23 +206,26 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
         global_settings['general']['db_credentials'],
         echo=False,
         pool_size=1,
-        pool_recycle=3600,
+        pool_recycle=600,
     )
+    # create hash of final data
+    m = hashlib.sha256()
+    data_archive.seek(0)
+    m.update(data_archive.read())
+    sha256 = m.hexdigest()
 
     # upload archive to database
     query = ' '.join((
         'insert into binary_data (filename, hash, data) values',
         '(%(filename)s, %(file_hash)s, %(bin_data)s) returning index;'
     ))
-    sha256 = subprocess.check_output(
-        'sha256sum "{}"'.format(archive_file), shell=True).decode('utf-8')
-    sha256 = sha256[0:sha256.find(' ')]
 
+    data_archive.seek(0)
     result = engine.execute(
         query,
         filename=os.path.basename(archive_file),
         file_hash=sha256,
-        bin_data=psycopg2.Binary(open(archive_file, 'rb').read())
+        bin_data=data_archive.read()
     )
     assert result.rowcount == 1
     file_id = result.fetchone()[0]
@@ -255,27 +266,33 @@ def _register_tomodir_for_processing(tomodir_raw, sim_type, global_settings):
     # now we are ready for processing
     engine.execute(
         'update inversions set '
-        'ready_for_processing=\'t\' where index=%(id)s;', {'id': sim_id}
+        'ready_for_processing=\'t\' where index=%(id)s;',
+        {'id': sim_id}
     )
     # delete tomodir
     shutil.rmtree(tomodir)
     logger.info('Added {} to queue'.format(os.path.relpath(tomodir)))
+    logger.info('db info after add: {}'.format(engine.pool.status()))
+    engine.dispose()
+    logger.info('db info after clean: {}'.format(engine.pool.status()))
 
 
 def main():
 
     global_settings = get_config()
-    # options = handle_cmd_options()
+    cmd_options = handle_cmd_options()
+
     needs_modeling, needs_inversion = find_unfinished_tomodirs('.')
     print('-' * 20)
     print('modeling:', needs_modeling)
     print('inversion:', needs_inversion)
     print('-' * 20)
     for directory in needs_modeling:
-        _register_tomodir_for_processing(directory, 'mod', global_settings)
+        _register_tomodir_for_processing(
+            directory, 'mod', global_settings, cmd_options)
     for directory in needs_inversion:
-        _register_tomodir_for_processing(directory, 'inv', global_settings)
-    # IPython.embed()
+        _register_tomodir_for_processing(
+            directory, 'inv', global_settings, cmd_options)
 
 
 if __name__ == '__main__':

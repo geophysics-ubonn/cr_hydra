@@ -27,7 +27,7 @@ global_settings = get_config()
 
 engine = create_engine(
     global_settings['general']['db_credentials'],
-    echo=False, pool_size=10, pool_recycle=3600,
+    echo=False, pool_size=10, pool_recycle=60,
 )
 
 
@@ -56,8 +56,14 @@ def _is_finished(sim_id, conn):
 
 
 def _check_and_retrieve(filename):
+    """For a given .crh file, check if the inversion results are ready to be
+    downloaded and extract the results
+    """
     logger.info('Checking: {}'.format(filename))
     sim_settings = json.load(open(filename, 'r'))
+    # ignore any simulation not successfully uploade
+    if 'sim_id' not in sim_settings:
+        return False
 
     conn = engine.connect()
     transaction = conn.begin_nested()
@@ -109,6 +115,7 @@ def _check_and_retrieve(filename):
         # IPython.embed()
         transaction.commit()
         conn.close()
+        engine.dispose()
 
 
 def mark_sim_as_downloaded(sim_id, conn):

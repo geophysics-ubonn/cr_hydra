@@ -4,19 +4,24 @@
 		"nr_cpus": 4,
 		"nr_threads": 1
 	},
+	"merapi": {
+		"nice_level": 15,
+		"nr_cpus": 12,
+		"nr_threads": 3
+	},
 	"titan": {
 		"nice_level": 10,
-		"nr_cpus": 6,
-		"nr_threads": 2
+		"nr_cpus": 8,
+		"nr_threads": 4
 	},
 	"topas": {
 		"nice_level": 10,
-		"nr_cpus": 6,
-		"nr_threads": 2
+		"nr_cpus": 12,
+		"nr_threads": 3
 	},
 	"raptor": {
 		"nice_level": 19,
-		"nr_cpus": 21,
+		"nr_cpus": 49,
 		"nr_threads": 3
 	},
 	"g4": {
@@ -28,6 +33,11 @@
 		"nice_level": -10,
 		"nr_cpus": 6,
 		"nr_threads": 3
+	},
+	"geocip-09": {
+		"nice_level": 15,
+		"nr_cpus": 8,
+		"nr_threads": 4
 	},
 	"aetna": {
 		"nice_level": 19,
@@ -53,5 +63,10 @@
 		"nice_level": 10,
 		"nr_cpus": 15,
 		"nr_threads": 3
+	},
+	"roet": {
+		"nice_level": 0,
+		"nr_cpus": 8,
+		"nr_threads": 4
 	}
 }
