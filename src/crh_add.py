@@ -170,10 +170,20 @@ def _register_tomodir_for_processing(
         if cmd_options.force_registration:
             logger.info('Checking existing .crh file: {}'.format(tomodir_raw))
             # load crh file
-
-            exit()
-        # do nothing - assume another process is working with this tomodir
-        return
+            with open(crh_file, 'r') as fid:
+                settings_tmp = json.load(fid)
+            if len(
+                    settings_tmp.keys()
+                    ) == 1 and 'datetime_init' in settings_tmp:
+                logger.info('Simulation was not fully registered.')
+                logger.info('Deleting .crh file and registering again')
+                os.unlink(crh_file)
+                # now proceed
+            else:
+                return
+        else:
+            # do nothing - assume another process is working with this tomodir
+            return
 
     tomodir_id = username + '_' + str(uuid.uuid4())
     archive_file = os.path.abspath(tomodir_id + '.tar.xz')
@@ -261,8 +271,6 @@ def _register_tomodir_for_processing(
     with open(crh_file, 'w') as fid:
         json.dump(crh_settings, fid, sort_keys=True, indent=4)
 
-    # delete archive file
-    os.unlink(archive_file)
     # now we are ready for processing
     engine.execute(
         'update inversions set '
@@ -272,9 +280,7 @@ def _register_tomodir_for_processing(
     # delete tomodir
     shutil.rmtree(tomodir)
     logger.info('Added {} to queue'.format(os.path.relpath(tomodir)))
-    logger.info('db info after add: {}'.format(engine.pool.status()))
     engine.dispose()
-    logger.info('db info after clean: {}'.format(engine.pool.status()))
 
 
 def main():

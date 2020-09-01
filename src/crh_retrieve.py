@@ -115,7 +115,7 @@ def _check_and_retrieve(filename):
         # IPython.embed()
         transaction.commit()
         conn.close()
-        engine.dispose()
+    engine.dispose()
 
 
 def mark_sim_as_downloaded(sim_id, conn):
