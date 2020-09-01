@@ -52,6 +52,7 @@ def _is_finished(sim_id, conn):
     if result.rowcount == 1:
         return result.fetchone()[0]
     else:
+        result.close()
         return None
 
 
@@ -113,8 +114,8 @@ def _check_and_retrieve(filename):
         mark_sim_as_downloaded(sim_settings['sim_id'], conn)
         os.unlink(filename)
         # IPython.embed()
-        transaction.commit()
-        conn.close()
+    transaction.commit()
+    conn.close()
     engine.dispose()
 
 
@@ -135,12 +136,14 @@ def mark_sim_as_downloaded(sim_id, conn):
         sim_id=sim_id
     )
     assert result.rowcount == 1
+    result.close()
     # delete
     result = conn.execute(
         'delete from binary_data where index in (%(id1)s, %(id2)s);',
         id1=file_ids[0],
         id2=file_ids[1],
     )
+    result.close()
 
 
 def main():
@@ -150,6 +153,7 @@ def main():
         for filename in files:
             if filename.endswith('.crh'):
                 _check_and_retrieve(root + os.sep + filename)
+                print(engine.pool.status())
 
 
 if __name__ == '__main__':

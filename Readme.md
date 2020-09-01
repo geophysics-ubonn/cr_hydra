@@ -113,6 +113,10 @@ information such as:
 	pg_catalog.pg_database db on (db.oid = l.database) where datname='cr_hydra'
 	AND NOT pid = pg_backend_pid() and mode=    'RowShareLock';
 
+* get number of active connections to db:
+
+	select count(*) from pg_stat_activity;
+
 ## Possible problems
 
 * dead inversions in the database: If the .crh files are deleted in the file
