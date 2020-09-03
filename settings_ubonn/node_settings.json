@@ -79,6 +79,16 @@
 		"nr_cpus": 15,
 		"nr_threads": 3
 	},
+	"k-07": {
+		"nice_level": 10,
+		"nr_cpus": 15,
+		"nr_threads": 3
+	},
+	"k-08": {
+		"nice_level": 10,
+		"nr_cpus": 15,
+		"nr_threads": 3
+	},
 	"roet": {
 		"nice_level": 0,
 		"nr_cpus": 8,

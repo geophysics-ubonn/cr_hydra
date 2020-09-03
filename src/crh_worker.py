@@ -61,6 +61,7 @@ else:
     number_of_workers = 2
     number_of_worker_threads = 2
     nice_level = 20
+    results.close()
 
 
 class hydra_worker(Process):
@@ -110,6 +111,8 @@ class hydra_worker(Process):
         if result.rowcount == 1:
             is_active = result.fetchone()[0]
             return is_active
+        else:
+            result.close()
         # by default we assume that this node is active
         return True
 
@@ -136,6 +139,7 @@ class hydra_worker(Process):
             ))
         )
         if r.rowcount == 0:
+            r.close()
             transaction.commit()
             self.conn.close()
             return False
