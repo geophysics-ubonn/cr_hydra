@@ -43,6 +43,7 @@ engine = create_engine(
     echo=False, pool_size=1, pool_recycle=3600,
 )
 node_name = platform.node()
+logging.info('Identifying as node: {}'.format(node_name))
 results = engine.execute(
     ' '.join((
         'select nice_level, nr_cpus, nr_threads from node_settings',
