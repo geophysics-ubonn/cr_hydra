@@ -49,6 +49,11 @@
 		"nr_cpus": 12,
 		"nr_threads": 3
 	},
+	"artynsk": {
+		"nice_level": 0,
+		"nr_cpus": 12,
+		"nr_threads": 3
+	},
 	"k-01": {
 		"nice_level": 10,
 		"nr_cpus": 15,
@@ -93,5 +98,30 @@
 		"nice_level": 0,
 		"nr_cpus": 8,
 		"nr_threads": 4
+	},
+	"fracture": {
+		"nice_level": 0,
+		"nr_cpus": 12,
+		"nr_threads": 3
+	},
+	"krypton-09": {
+		"nice_level": 19,
+		"nr_cpus": 49,
+		"nr_threads": 3
+	},
+	"krypton-10": {
+		"nice_level": 19,
+		"nr_cpus": 49,
+		"nr_threads": 3
+	},
+	"krypton-11": {
+		"nice_level": 19,
+		"nr_cpus": 49,
+		"nr_threads": 3
+	},
+	"krypton-12": {
+		"nice_level": 19,
+		"nr_cpus": 49,
+		"nr_threads": 3
 	}
 }
