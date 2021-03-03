@@ -121,6 +121,12 @@ information such as:
 
 	select count(*) from pg_stat_activity;
 
+* get number of finished inversions in the last hour from a specific computer::
+
+	select count(*) from inversions where
+	datetime_finished >= NOW() - INTERVAL '1 HOURS' and
+	status='finished' and inv_computer='krypton09';
+
 ## Possible problems
 
 * dead inversions in the database: If the .crh files are deleted in the file
