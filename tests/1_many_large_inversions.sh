@@ -3,7 +3,7 @@ outdir="test01"
 test -d "${outdir}" && rm -r "${outdir}"
 mkdir "${outdir}"
 
-for i in {1..30}
+for i in {1..2}
 do
 	cp -r "unfinished_inversions/td_large" "${outdir}/td_${i}"
 

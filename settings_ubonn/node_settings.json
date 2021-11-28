@@ -104,22 +104,22 @@
 		"nr_cpus": 12,
 		"nr_threads": 3
 	},
-	"krypton-09": {
+	"krypton09": {
 		"nice_level": 19,
 		"nr_cpus": 49,
 		"nr_threads": 3
 	},
-	"krypton-10": {
+	"krypton10": {
 		"nice_level": 19,
 		"nr_cpus": 49,
 		"nr_threads": 3
 	},
-	"krypton-11": {
+	"krypton11": {
 		"nice_level": 19,
 		"nr_cpus": 49,
 		"nr_threads": 3
 	},
-	"krypton-12": {
+	"krypton12": {
 		"nice_level": 19,
 		"nr_cpus": 49,
 		"nr_threads": 3
