@@ -10,6 +10,10 @@
 * Implement a check for the database:
 	* duplicate entries (hash, crh_file)
 
+* crh_retrieve: by default any inversion should be retrieved directly, not
+  after all retrievable inversions were identified.
+* We need some kind of priority scheme
+
 ## Introduction
 
 ## Definition of terms
