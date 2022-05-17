@@ -37,6 +37,8 @@ def _is_finished(sim_id, conn):
     Ignore any rows already locked by other processes (i.e., concurrent runs
     of crh_retrieve)
 
+    Returns None if the given inversion is not finished or unavailable
+
     """
     result = conn.execute(
         ' '.join((
@@ -59,7 +61,12 @@ def _is_finished(sim_id, conn):
 def _check_and_retrieve(filename):
     """For a given .crh file, check if the inversion results are ready to be
     downloaded and extract the results
+
+    Returns
+    -------
+
     """
+    status = False
     logger.info('Checking: {}'.format(filename))
     sim_settings = json.load(open(filename, 'r'))
     # ignore any simulation not successfully uploade
@@ -112,11 +119,13 @@ def _check_and_retrieve(filename):
             tar.extractall('.')
         os.chdir(pwd)
         mark_sim_as_downloaded(sim_settings['sim_id'], conn)
+        status = True
         os.unlink(filename)
         # IPython.embed()
     transaction.commit()
     conn.close()
     engine.dispose()
+    return status
 
 
 def mark_sim_as_downloaded(sim_id, conn):
@@ -146,14 +155,21 @@ def mark_sim_as_downloaded(sim_id, conn):
     result.close()
 
 
-def main():
+def retrieve_all_finished_mods_and_invs():
+    unfinished = False
     for root, dirs, files in os.walk('.'):
         dirs.sort()
         files.sort()
         for filename in files:
             if filename.endswith('.crh'):
-                _check_and_retrieve(root + os.sep + filename)
-                print(engine.pool.status())
+                status = _check_and_retrieve(root + os.sep + filename)
+                if not status:
+                    unfinished = True
+    return unfinished
+
+
+def main():
+    retrieve_all_finished_mods_and_invs()
 
 
 if __name__ == '__main__':

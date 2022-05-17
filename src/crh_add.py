@@ -283,8 +283,7 @@ def _register_tomodir_for_processing(
     engine.dispose()
 
 
-def main():
-
+def crh_add():
     global_settings = get_config()
     cmd_options = handle_cmd_options()
 
@@ -299,6 +298,10 @@ def main():
     for directory in needs_inversion:
         _register_tomodir_for_processing(
             directory, 'inv', global_settings, cmd_options)
+
+
+def main():
+    crh_add
 
 
 if __name__ == '__main__':
