@@ -15,6 +15,7 @@ import tarfile
 import platform
 
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from optparse import OptionParser
 import IPython
 
@@ -212,12 +213,18 @@ def _register_tomodir_for_processing(
     crh_settings['crh_file'] = os.path.abspath(crh_file)
     crh_settings['username'] = username
 
+    print(
+        'Connecting to: {}'.format(
+            global_settings['general']['db_credentials']
+        )
+    )
     engine = create_engine(
         global_settings['general']['db_credentials'],
         echo=False,
         pool_size=1,
         pool_recycle=600,
     )
+    connection = engine.connect()
     # create hash of final data
     m = hashlib.sha256()
     data_archive.seek(0)
@@ -227,16 +234,19 @@ def _register_tomodir_for_processing(
     # upload archive to database
     query = ' '.join((
         'insert into binary_data (filename, hash, data) values',
-        '(%(filename)s, %(file_hash)s, %(bin_data)s) returning index;'
+        '(:filename, :file_hash, :bin_data) returning index;'
     ))
 
     data_archive.seek(0)
-    result = engine.execute(
-        query,
-        filename=os.path.basename(archive_file),
-        file_hash=sha256,
-        bin_data=data_archive.read()
+    result = connection.execute(
+        text(query),
+        parameters={
+            'filename': os.path.basename(archive_file),
+            'file_hash': sha256,
+            'bin_data': data_archive.read(),
+        },
     )
+    connection.commit()
     assert result.rowcount == 1
     file_id = result.fetchone()[0]
     crh_settings['tomodir_unfinished_file'] = file_id
@@ -250,19 +260,22 @@ def _register_tomodir_for_processing(
         'sim_type,',
         'crh_file',
         ') values (',
-        '%(username)s,',
-        '%(datetime_init)s,',
-        '%(tomodir_unfinished_file)s,',
-        '%(source_computer)s,',
-        '%(sim_type)s,',
-        '%(crh_file)s',
+        ':username,',
+        ':datetime_init,',
+        ':tomodir_unfinished_file,',
+        ':source_computer,',
+        ':sim_type,',
+        ':crh_file',
         ')',
         'returning index;'
     ))
-    result = engine.execute(
-        query,
-        crh_settings
+    result = connection.execute(
+        text(query),
+        parameters=crh_settings
     )
+    print('rowcount pre commit', result.rowcount)
+    connection.commit()
+    print('rowcount post commit', result.rowcount)
     assert result.rowcount == 1
     sim_id = result.fetchone()[0]
 
@@ -272,14 +285,18 @@ def _register_tomodir_for_processing(
         json.dump(crh_settings, fid, sort_keys=True, indent=4)
 
     # now we are ready for processing
-    engine.execute(
-        'update inversions set '
-        'ready_for_processing=\'t\' where index=%(id)s;',
-        {'id': sim_id}
+    connection.execute(
+        text(
+            'update inversions set '
+            'ready_for_processing=\'t\' where index=:id;'
+        ),
+        parameters={'id': sim_id},
     )
+    connection.commit()
     # delete tomodir
     shutil.rmtree(tomodir)
     logger.info('Added {} to queue'.format(os.path.relpath(tomodir)))
+    connection.close()
     engine.dispose()
 
 

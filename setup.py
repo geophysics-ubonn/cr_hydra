@@ -34,7 +34,7 @@ if __name__ == '__main__':
         py_modules=scripts,
         entry_points=entry_points,
         install_requires=[
-            'sqlalchemy',
+            'sqlalchemy >= 2.0',
             'psycopg2-binary',
             'ipython',
             'numpy',

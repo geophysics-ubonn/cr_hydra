@@ -9,7 +9,7 @@ import io
 import tarfile
 import json
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import IPython
 
 from cr_hydra.settings import get_config
@@ -39,15 +39,19 @@ def _is_finished(sim_id, conn):
 
     """
     result = conn.execute(
-        ' '.join((
-            'select tomodir_finished_file from inversions',
-            'where index=%(sim_id)s and status=\'finished\'',
-            'and downloaded=\'f\'',
-            'for update',
-            'skip locked',
-            ';'
-        )),
-        sim_id=sim_id
+        text(
+            ' '.join((
+                'select tomodir_finished_file from inversions',
+                'where index=:sim_id and status=\'finished\'',
+                'and downloaded=\'f\'',
+                'for update',
+                'skip locked',
+                ';'
+            ))
+        ),
+        parameters={
+            'sim_id': sim_id,
+        }
     )
     if result.rowcount == 1:
         return result.fetchone()[0]
@@ -67,7 +71,7 @@ def _check_and_retrieve(filename):
         return False
 
     conn = engine.connect()
-    transaction = conn.begin_nested()
+    # transaction = conn.begin_nested()
 
     final_data_id = _is_finished(sim_settings['sim_id'], conn)
 
@@ -79,8 +83,12 @@ def _check_and_retrieve(filename):
     if final_data_id is not None:
         # we got data
         result = conn.execute(
-            'select hash, data from binary_data where index=%(data_id)s;',
-            data_id=final_data_id
+            text(
+                'select hash, data from binary_data where index=:data_id;'
+            ),
+            parameters={
+                'data_id': final_data_id,
+            },
         )
         assert result.rowcount == 1
         file_hash, binary_data = result.fetchone()
@@ -114,7 +122,7 @@ def _check_and_retrieve(filename):
         mark_sim_as_downloaded(sim_settings['sim_id'], conn)
         os.unlink(filename)
         # IPython.embed()
-    transaction.commit()
+    # transaction.commit()
     conn.close()
     engine.dispose()
 
@@ -122,27 +130,39 @@ def _check_and_retrieve(filename):
 def mark_sim_as_downloaded(sim_id, conn):
     # mark the simulation as downloaded and delete the files
     result = conn.execute(
-        'select tomodir_unfinished_file, tomodir_finished_file from ' +
-        'inversions where index=%(sim_id)s;',
-        sim_id=sim_id
+        text(
+            'select tomodir_unfinished_file, tomodir_finished_file from ' +
+            'inversions where index=:sim_id;'
+        ),
+        parameters={
+            'sim_id': sim_id,
+        }
     )
     assert result.rowcount == 1
     file_ids = list(result.fetchone())
     result = conn.execute(
-        'update inversions set ' +
-        'tomodir_unfinished_file=NULL, ' +
-        'tomodir_finished_file=NULL, ' +
-        'downloaded=\'t\' where index=%(sim_id)s;',
-        sim_id=sim_id
+        text(
+            'update inversions set ' +
+            'tomodir_unfinished_file=NULL, ' +
+            'tomodir_finished_file=NULL, ' +
+            'downloaded=\'t\' where index=:sim_id;'
+        ),
+        parameters={
+            'sim_id': sim_id,
+        },
     )
+    conn.commit()
     assert result.rowcount == 1
     result.close()
     # delete
     result = conn.execute(
-        'delete from binary_data where index in (%(id1)s, %(id2)s);',
-        id1=file_ids[0],
-        id2=file_ids[1],
+        text('delete from binary_data where index in (:id1, :id2);'),
+        parameters={
+            'id1': file_ids[0],
+            'id2': file_ids[1],
+        },
     )
+    conn.commit()
     result.close()
 
 
