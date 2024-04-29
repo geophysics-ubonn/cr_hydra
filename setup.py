@@ -4,7 +4,7 @@ import glob
 
 from setuptools import setup
 
-version_long = '0.1.0.dev0'
+version_long = '0.2.0'
 
 # generate entry points
 entry_points = {'console_scripts': []}
