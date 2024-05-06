@@ -16,6 +16,37 @@
 
 ## Introduction
 
+TODO
+
+
+## Quick How-to-use
+
+* Configure the connection to the database by editing the file
+  **$HOME/.crhydra.cfg**:
+
+	[general]
+
+	db_credentials = postgresql://test:test@testdb:22224/cr_hydra
+
+* Start with a **tomodir** that can be inverted (check by creating a temporary
+  copy of this directory and running CRTomo once in the *exe/* subdirectory)
+* Instal cr-hyra, e.g., in a Python virtualenv:
+
+	pip install cr-hydra
+* Enter the directory where the tomodir is located
+* Now query the inversion to the hydra by calling:
+
+	crh_add
+
+  This command will look for all tomodirs that can be either modelled or
+  inverted, and then will upload them to the server.
+* Retrieve finished inversions using:
+
+	crh_retrieve
+* Note: the tdManager of the crtomo-tools has a new function
+  .invert_with_crhydra() that can upload an inversion directly to the Hydra,
+  without first writing anything to the disc
+
 ## Definition of terms
 
 * client: A computer on which a modeling/inversion is requested
