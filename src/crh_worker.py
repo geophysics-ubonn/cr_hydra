@@ -20,6 +20,7 @@ from optparse import OptionParser
 
 import pandas as pd
 from sqlalchemy import create_engine
+from sqlalchemy import text
 import IPython
 
 from cr_hydra.settings import get_config
@@ -42,14 +43,19 @@ engine = create_engine(
     global_settings['general']['db_credentials'],
     echo=False, pool_size=1, pool_recycle=3600,
 )
+connection = engine.connect()
 node_name = platform.node()
 logging.info('Identifying as node: {}'.format(node_name))
-results = engine.execute(
-    ' '.join((
-        'select nice_level, nr_cpus, nr_threads from node_settings',
-        'where node_name = %(node_name)s;',
-    )),
-    node_name=node_name
+results = connection.execute(
+    text(
+        ' '.join((
+            'select nice_level, nr_cpus, nr_threads from node_settings',
+            'where node_name = :node_name;',
+        ))
+    ),
+    parameters={
+        'node_name': node_name,
+    }
 )
 if results.rowcount == 1:
     logging.info('Found node settings in database for node: {}'.format(
@@ -72,16 +78,19 @@ class hydra_worker(Process):
         self.name = name
         self.cmd_opts = cmd_opts
         self.logger = logging.getLogger('crh_worker-' + name)
+        self.logger.setLevel(logging.DEBUG)
         self.engine = create_engine(
             global_settings['general']['db_credentials'],
-            echo=False, pool_size=10, pool_recycle=3600,
+            echo=False,
+            pool_size=10,
+            pool_recycle=3600,
         )
 
     def run(self):
         """
 
         """
-        while(True):
+        while (True):
             if self._check_node_active():
                 did_sim = self._query_db_and_run_sim()
                 if did_sim:
@@ -105,15 +114,21 @@ class hydra_worker(Process):
     def _check_node_active(self):
         """Check if this node should be active
         """
-        result = self.engine.execute(
-            'select active from node_settings where node_name=%(node_name)s;',
-            node_name=node_name
+        conn = self.engine.connect()
+        result = conn.execute(
+            text(
+                'select active from node_settings where node_name=:node_name;',
+            ),
+            parameters={
+                'node_name': node_name,
+            }
         )
         if result.rowcount == 1:
             is_active = result.fetchone()[0]
             return is_active
         else:
             result.close()
+        conn.close()
         # by default we assume that this node is active
         return True
 
@@ -131,22 +146,28 @@ class hydra_worker(Process):
         transaction = self.conn.begin_nested()
         # get the next free, unfinished simulation
         r = self.conn.execute(
-            ' '.join((
-                'select index from inversions where ',
-                'ready_for_processing=\'t\' and status <> \'finished\'',
-                'and error=0',
-                'order by ',
-                'index asc for update skip locked limit 1;'
-            ))
+            text(
+                ' '.join((
+                    'select index from inversions where ',
+                    'ready_for_processing=\'t\' and status <> \'finished\'',
+                    'and error=0',
+                    'order by ',
+                    'index asc for update skip locked limit 1;'
+                ))
+            )
         )
         if r.rowcount == 0:
             r.close()
             transaction.commit()
             self.conn.close()
             return False
+
         # now the row is locked for us
         job_id = r.fetchone()[0]
         self.logger.info('job id: {}'.format(job_id))
+        # note (2024.05): it seems as pandas wants the %(PARAMETER)s type of
+        # parameter format, in contrast to the direct sqlalchemy calls, which
+        # use :PARAMETER
         query = ' '.join((
             'select',
             'tomodir_unfinished_file, sim_type,',
@@ -155,7 +176,10 @@ class hydra_worker(Process):
             'where index=%(index)s;'
         ))
         job_data = pd.read_sql_query(
-            query, self.conn, params={'index': job_id})
+            query,
+            self.conn,
+            params={'index': job_id}
+        )
 
         self.logger.info('Processing job id: {}'.format(job_id))
 
@@ -168,7 +192,7 @@ class hydra_worker(Process):
         )
 
         # this actually updates the database
-        transaction.commit()
+        # transaction.commit()
         self.conn.close()
         return True
 
@@ -178,8 +202,12 @@ class hydra_worker(Process):
 
         # get unfinished data and unpack
         result = self.conn.execute(
-            'select hash, data from binary_data where index=%(file_id)s;',
-            file_id=file_id
+            text(
+                'select hash, data from binary_data where index=:file_id;',
+            ),
+            parameters={
+                'file_id': file_id,
+            }
         )
         file_hash, binary_data = result.fetchone()
 
@@ -188,7 +216,7 @@ class hydra_worker(Process):
         m.update(binary_data)
         assert file_hash == m.hexdigest()
 
-        # unpack to tempir
+        # unpack to tempdir
         fid = io.BytesIO(bytes(binary_data))
         with tarfile.open(fileobj=fid, mode='r') as tar:
             tar.extractall(path=tempdir)
@@ -196,7 +224,7 @@ class hydra_worker(Process):
         # call td run
         old_pwd = os.getcwd()
         os.chdir(tempdir)
-        self.logger.info('Running inversion')
+        self.logger.info('starting CRTomo')
         dt_inv_started = datetime.datetime.now(tz=datetime.timezone.utc)
 
         inv_cpu = subprocess.check_output(
@@ -214,23 +242,30 @@ class hydra_worker(Process):
                 stderr=subprocess.STDOUT,
                 shell=True
             )
+            self.logger.debug(
+                'finished calling CRTomo'
+            )
         except subprocess.CalledProcessError as e:
+            print('ERROR', e)
+            self.logger.inifo(
+                'some kidn of error'
+            )
             self.logger.error('There was an error executing CRTomo')
             self.logger.error(e)
             # it seems something went wrong while running CRTomo...
             query = ' '.join((
                 'update inversions set',
-                'error = %(error_code)s,',
-                'error_msg=%(error_msg)s,',
-                'datetime_inversion_started=%(dt_started)s,',
-                'datetime_finished=%(dt_finished)s, ',
-                'inv_computer=%(node_name)s,',
-                'inv_cpu=%(inv_cpu)s',
-                'where index=%(job_id)s;',
+                'error=:error_code,',
+                'error_msg=:error_msg,',
+                'datetime_inversion_started=:dt_started,',
+                'datetime_finished=:dt_finished, ',
+                'inv_computer=:node_name,',
+                'inv_cpu=:inv_cpu',
+                'where index=:job_id;',
             ))
             r = self.conn.execute(
-                query,
-                {
+                text(query),
+                parameters={
                     'job_id': job_id,
                     'error_code': 2,
                     'node_name': node_name,
@@ -241,6 +276,7 @@ class hydra_worker(Process):
                     'error_msg': e.cmd + '_' + e.output.decode('utf-8'),
                 }
             )
+            self.conn.commit()
             return
 
         # special case: an error.dat file appeared, indicating that the
@@ -271,30 +307,37 @@ class hydra_worker(Process):
         # upload
         finished_data.seek(0)
         result = self.conn.execute(
-            'insert into binary_data (hash, data) values' +
-            '(%(data_hash)s, %(bin_data)s) returning index;',
-            data_hash=hash_final,
-            bin_data=finished_data.read()
+            text(
+                'insert into binary_data (hash, data) values' +
+                '(:data_hash, :bin_data) returning index;'
+            ),
+            parameters={
+                'data_hash': hash_final,
+                'bin_data': finished_data.read(),
+            },
         )
+        self.conn.commit()
         finished_data_index = result.fetchone()[0]
 
         os.chdir(old_pwd)
-        self.logger.info('updating to finished')
+        self.logger.info(
+            'updating to finished, index: {}'.format(finished_data_index)
+        )
         # mark as finished
         query = ' '.join((
             'update inversions set',
             'status=\'finished\',',
-            'error=%(error_code)s,',
-            'tomodir_finished_file=%(finished_data)s,',
-            'datetime_inversion_started=%(dt_started)s,',
-            'datetime_finished=%(dt_finished)s, ',
-            'inv_computer=%(node_name)s,',
-            'inv_cpu=%(inv_cpu)s',
-            'where index=%(job_id)s;',
+            'error=:error_code,',
+            'tomodir_finished_file=:finished_data,',
+            'datetime_inversion_started=:dt_started,',
+            'datetime_finished=:dt_finished, ',
+            'inv_computer=:node_name,',
+            'inv_cpu=:inv_cpu ',
+            'where index=:job_id;',
         ))
         r = self.conn.execute(
-            query,
-            {
+            text(query),
+            parameters={
                 'job_id': job_id,
                 'finished_data': finished_data_index,
                 'node_name': node_name,
@@ -304,6 +347,7 @@ class hydra_worker(Process):
                 'dt_finished': dt_inv_ended,
             }
         )
+        self.conn.commit()
         assert r.rowcount == 1
 
         # delete temporary directory
