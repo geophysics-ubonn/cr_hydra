@@ -23,6 +23,7 @@ from cr_hydra.settings import get_config
 IPython
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def handle_cmd_options():
@@ -102,7 +103,7 @@ def check_if_needs_modeling(tomodir):
     return needs_modeling
 
 
-def check_if_needs_inversion(tomodir):
+def check_if_needs_inversion(tomodir, debug=False):
     """check of we need to run CRTomo in a given tomodir
 
     Parameters
@@ -115,6 +116,11 @@ def check_if_needs_inversion(tomodir):
     needs_inversion : bool
         True if not finished yet
     """
+    if debug:
+        print('Checking directory {} for mod/inv requirement'.format(
+            tomodir
+            )
+        )
     required_files = (
         'grid' + os.sep + 'elem.dat',
         'grid' + os.sep + 'elec.dat',
@@ -125,11 +131,19 @@ def check_if_needs_inversion(tomodir):
 
     for filename in required_files:
         if not os.path.isfile(tomodir + os.sep + filename):
+            if debug:
+                print(
+                    '    no inv-req. due to missing file: {}'.format(filename)
+                )
             needs_inversion = False
 
     # check for crmod OR modeling capabilities
     if not os.path.isfile(tomodir + os.sep + 'mod' + os.sep + 'volt.dat'):
         if not check_if_needs_modeling(tomodir):
+            if debug:
+                print(
+                    '    no inv-req. due to missing volt.dat file'
+                )
             needs_inversion = False
 
     # check if finished
@@ -137,6 +151,8 @@ def check_if_needs_inversion(tomodir):
     if os.path.isfile(inv_ctr_file):
         inv_lines = open(inv_ctr_file, 'r').readlines()
         if inv_lines[-1].startswith('***finished***'):
+            if debug:
+                print('    no inv-req. due to already finished inversion')
             needs_inversion = False
 
     return needs_inversion
@@ -151,7 +167,7 @@ def find_unfinished_tomodirs(directory):
             logging.info('found tomodir: {}'.format(root))
             if check_if_needs_modeling(root):
                 needs_modeling.append(root)
-            if check_if_needs_inversion(root):
+            if check_if_needs_inversion(root, debug=True):
                 needs_inversion.append(root)
 
     return sorted(needs_modeling), sorted(needs_inversion)
@@ -162,6 +178,7 @@ def _register_tomodir_for_processing(
     """
     sim_type: inv|mod
     """
+    print('registering tomodir:', tomodir_raw)
     tomodir = os.path.abspath(tomodir_raw)
     # should be read from the configuration file
     username = 'mweigand'
@@ -301,6 +318,7 @@ def _register_tomodir_for_processing(
 
 
 def crh_add():
+    print('CRH Add')
     global_settings = get_config()
     cmd_options = handle_cmd_options()
 
@@ -318,7 +336,7 @@ def crh_add():
 
 
 def main():
-    crh_add
+    crh_add()
 
 
 if __name__ == '__main__':
