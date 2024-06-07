@@ -39,6 +39,7 @@ global_settings = get_config()
 query_interval = 15
 # settings end
 
+print(global_settings['general']['db_credentials'])
 engine = create_engine(
     global_settings['general']['db_credentials'],
     echo=False, pool_size=1, pool_recycle=3600,
@@ -220,24 +221,24 @@ class hydra_worker(Process):
         fid = io.BytesIO(bytes(binary_data))
         with tarfile.open(fileobj=fid, mode='r') as tar:
             def is_within_directory(directory, target):
-                
+
                 abs_directory = os.path.abspath(directory)
                 abs_target = os.path.abspath(target)
-            
+
                 prefix = os.path.commonprefix([abs_directory, abs_target])
-                
+
                 return prefix == abs_directory
-            
+
             def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-            
+
                 for member in tar.getmembers():
                     member_path = os.path.join(path, member.name)
                     if not is_within_directory(path, member_path):
                         raise Exception("Attempted Path Traversal in Tar File")
-            
-                tar.extractall(path, members, numeric_owner=numeric_owner) 
-                
-            
+
+                tar.extractall(path, members, numeric_owner=numeric_owner)
+
+
             safe_extract(tar, path=tempdir)
 
         # call td run
